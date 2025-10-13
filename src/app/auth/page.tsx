@@ -2,8 +2,10 @@
 
 import Navbar from "@/components/Navbar";
 import { auth } from "@/lib/firebase";
+import { useAuth } from "@/lib/hooks";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -11,6 +13,14 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.push("/");
+    }
+  }, [user, loading, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,13 +33,24 @@ export default function AuthPage() {
         setMode("login");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
-        setMsg("Sesión iniciada correctamente.");
+        // Redirection will be handled by the useEffect
       }
     } catch (err: any) {
       setMsg(err?.message ?? "Ocurrió un error.");
     } finally {
       setBusy(false);
     }
+  }
+
+  if (loading || user) {
+    return (
+      <>
+        <Navbar />
+        <main className="mx-auto max-w-md p-6 text-center">
+          <h1 className="text-2xl font-semibold">Cargando...</h1>
+        </main>
+      </>
+    );
   }
 
   return (

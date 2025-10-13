@@ -1,14 +1,16 @@
 import Navbar from "@/components/Navbar";
 import { fetchArticleById } from "@/lib/fetchers";
 import { notFound } from "next/navigation";
+import InteractionButtons from "@/components/InteractionButtons";
 
-type Props = { params: { id: string } };
+type Props = { params: Promise<{ id: string }> };
 
 export default async function ArticlePage({ params }: Props) {
+  const { id } = await params;
   let article: Awaited<ReturnType<typeof fetchArticleById>> | null = null;
 
   try {
-    article = await fetchArticleById(params.id);
+    article = await fetchArticleById(id);
   } catch {
     return notFound();
   }
@@ -31,6 +33,7 @@ export default async function ArticlePage({ params }: Props) {
             {/* Si tu contenido viene en Markdown/HTML, ajusta el render aquí */}
             <p className="whitespace-pre-wrap">{article.content}</p>
           </div>
+          <InteractionButtons articleId={article.id} />
         </article>
 
         <section className="mt-10">
