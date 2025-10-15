@@ -1,7 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/hooks";
-import { likeArticle, unlikeArticle, hasLikedArticle } from "@/lib/interactions";
+import {
+  toggleLikeArticle,
+  hasLikedArticle,
+  getArticleStats,
+  registerView,
+} from "@/lib/interactions";
+import { Eye, Heart } from "lucide-react";
 
 type Props = {
   articleId: string;
@@ -10,25 +16,42 @@ type Props = {
 export default function InteractionButtons({ articleId }: Props) {
   const { user } = useAuth();
   const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [viewCount, setViewCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!user) {
-      setIsLoading(false);
+      // For logged-out users, just get the public stats
+      getArticleStats(articleId).then((stats) => {
+        setLikeCount(stats.likes);
+        setViewCount(stats.views);
+        setIsLoading(false);
+      });
       return;
     }
 
     let isCancelled = false;
 
-    async function checkLikeStatus() {
+    async function fetchInitialData() {
+      setIsLoading(true);
       try {
-        setIsLoading(true);
-        const liked = await hasLikedArticle(articleId);
+        // Register the view first
+        await registerView(articleId);
+
+        // Fetch stats and like status in parallel
+        const [stats, liked] = await Promise.all([
+          getArticleStats(articleId),
+          hasLikedArticle(articleId),
+        ]);
+
         if (!isCancelled) {
+          setLikeCount(stats.likes);
+          setViewCount(stats.views);
           setIsLiked(liked);
         }
       } catch (error) {
-        console.error("Error checking like status:", error);
+        console.error("Error fetching interaction data:", error);
       } finally {
         if (!isCancelled) {
           setIsLoading(false);
@@ -36,7 +59,7 @@ export default function InteractionButtons({ articleId }: Props) {
       }
     }
 
-    checkLikeStatus();
+    fetchInitialData();
 
     return () => {
       isCancelled = true;
@@ -44,54 +67,75 @@ export default function InteractionButtons({ articleId }: Props) {
   }, [articleId, user]);
 
   const handleToggleLike = async () => {
-    if (!user || isLoading) {
-      console.log("Toggle like blocked: user not logged in or already loading.");
-      return;
-    }
+    if (!user || isLoading) return;
 
     const originalIsLiked = isLiked;
-    console.log(`Toggling like. Original state: ${originalIsLiked}`);
 
-    setIsLiked(!originalIsLiked); // Optimistic update
+    // Optimistic UI update
+    setIsLiked(!originalIsLiked);
+    setLikeCount((prev) => (originalIsLiked ? prev - 1 : prev + 1));
     setIsLoading(true);
 
     try {
-      if (!originalIsLiked) {
-        console.log(`Calling likeArticle for article ${articleId}`);
-        await likeArticle(articleId);
-        console.log("likeArticle finished.");
-      } else {
-        console.log(`Calling unlikeArticle for article ${articleId}`);
-        await unlikeArticle(articleId);
-        console.log("unlikeArticle finished.");
-      }
+      await toggleLikeArticle(articleId);
+      // Optional: re-fetch stats from server to ensure consistency
+      const updatedStats = await getArticleStats(articleId);
+      setLikeCount(updatedStats.likes);
+
     } catch (err: any) {
       console.error("Error toggling like:", err);
-      setIsLiked(originalIsLiked); // Revert on error
+      // Revert on error
+      setIsLiked(originalIsLiked);
+      setLikeCount((prev) => (originalIsLiked ? prev + 1 : prev - 1));
       alert(`Error: ${err.message}`);
     } finally {
       setIsLoading(false);
-      console.log("Finished toggling like. New loading state: false");
     }
   };
 
+  // Render for logged-out users
   if (!user) {
-    return null;
+    return (
+      <div className="mt-6 flex items-center gap-6 text-sm text-neutral-500">
+        <div className="flex items-center gap-2">
+          <Heart size={18} />
+          <span>{likeCount}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Eye size={18} />
+          <span>{viewCount}</span>
+        </div>
+      </div>
+    );
   }
 
-  const buttonText = isLiked ? "Te gusta" : "Me gusta";
+  // Render for logged-in users
   const buttonClass = isLiked
-    ? "bg-blue-500 text-white"
-    : "hover:bg-neutral-100";
+    ? "bg-blue-50 text-blue-600 border-blue-200"
+    : "hover:bg-neutral-100 border-neutral-200";
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="mt-6 flex items-center justify-between">
+      <div className="flex items-center gap-6 text-sm text-neutral-600">
+        <div className="flex items-center gap-2">
+          <Heart
+            size={18}
+            className={isLiked ? "fill-current text-blue-600" : ""}
+          />
+          <span>{likeCount} Me gusta</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Eye size={18} />
+          <span>{viewCount} Vistas</span>
+        </div>
+      </div>
       <button
-        className={`mt-4 rounded-md border px-4 py-2 text-sm font-semibold transition-colors ${buttonClass}`}
+        className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${buttonClass}`}
         onClick={handleToggleLike}
         disabled={isLoading}
       >
-        {isLoading ? "Cargando..." : buttonText}
+        <Heart size={16} className="mr-2 inline-block" />
+        {isLiked ? "Te gusta" : "Me gusta"}
       </button>
     </div>
   );

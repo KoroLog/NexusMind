@@ -9,14 +9,16 @@ export type Article = {
 };
 
 export async function fetchArticles(limit = 20): Promise<Article[]> {
-  const { data, error } = await supabase
-    .from("articles")
-    .select("id,title,author,created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw error;
-  return (data ?? []) as Article[];
+  // In a real app, you'd use the limit.
+  // We fetch from the API route for this example.
+  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/articles`, {
+    next: { revalidate: 0 }, // no cache
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch articles");
+  }
+  const articles = await res.json();
+  return articles as Article[];
 }
 
 export async function fetchArticleById(id: string): Promise<Article> {
